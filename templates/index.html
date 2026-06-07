@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>손글씨 숫자 인식기</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      color: #eee;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+      color: #e94560;
+    }
+
+    p.subtitle {
+      color: #aaa;
+      margin-bottom: 30px;
+      font-size: 0.95rem;
+    }
+
+    .main-layout {
+      display: flex;
+      gap: 32px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* 캔버스 */
+    .canvas-section { display: flex; flex-direction: column; align-items: center; }
+
+    .canvas-wrapper {
+      background: #16213e;
+      border: 3px solid #e94560;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    #drawCanvas {
+      display: block;
+      background: #ffffff;
+      cursor: crosshair;
+      border-radius: 6px;
+      touch-action: none;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      padding: 12px 28px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.1s, background 0.2s;
+    }
+
+    button:active { transform: scale(0.97); }
+
+    #recognizeBtn { background: #e94560; color: white; }
+    #recognizeBtn:hover { background: #c83050; }
+
+    #clearBtn { background: #0f3460; color: white; border: 2px solid #e94560; }
+    #clearBtn:hover { background: #1a4a80; }
+
+    /* 결과 */
+    .result-section {
+      min-width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .result-number-box {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      border: 1px solid #0f3460;
+    }
+
+    .result-number {
+      font-size: 6rem;
+      font-weight: bold;
+      color: #e94560;
+      line-height: 1;
+    }
+
+    .result-label {
+      color: #aaa;
+      font-size: 0.9rem;
+      margin-top: 8px;
+    }
+
+    .prob-box {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 20px 24px;
+      border: 1px solid #0f3460;
+    }
+
+    .prob-title {
+      color: #888;
+      font-size: 0.8rem;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .prob-row {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+      font-size: 0.85rem;
+    }
+
+    .prob-label {
+      width: 18px;
+      color: #ccc;
+      font-weight: bold;
+    }
+
+    .prob-bar-wrap {
+      flex: 1;
+      background: #0f3460;
+      border-radius: 4px;
+      height: 14px;
+      margin: 0 10px;
+      overflow: hidden;
+    }
+
+    .prob-bar {
+      height: 100%;
+      background: #e94560;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .prob-value {
+      width: 38px;
+      text-align: right;
+      color: #aaa;
+    }
+
+    .waiting {
+      color: #555;
+      font-size: 1rem;
+      padding: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>✍️ 손글씨 숫자 인식기</h1>
+  <p class="subtitle">캔버스에 숫자(0~9)를 그리고 [인식하기] 버튼을 눌러보세요!</p>
+
+  <div class="main-layout">
+    <!-- 왼쪽: 캔버스 -->
+    <div class="canvas-section">
+      <div class="canvas-wrapper">
+        <canvas id="drawCanvas" width="280" height="280"></canvas>
+      </div>
+      <div class="btn-group">
+        <button id="recognizeBtn">🔍 인식하기</button>
+        <button id="clearBtn">🗑️ 지우기</button>
+      </div>
+    </div>
+
+    <!-- 오른쪽: 결과 -->
+    <div class="result-section">
+      <div class="result-number-box">
+        <div class="result-number" id="resultNum">?</div>
+        <div class="result-label" id="resultConf">숫자를 그린 후 인식하기를 눌러주세요</div>
+      </div>
+
+      <div class="prob-box">
+        <div class="prob-title">각 숫자별 확률</div>
+        <div id="probBars">
+          <!-- JS로 생성 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── 확률 막대 초기 생성 ──
+    const probBarsEl = document.getElementById("probBars");
+    for (let i = 0; i <= 9; i++) {
+      probBarsEl.innerHTML += `
+        <div class="prob-row">
+          <span class="prob-label">${i}</span>
+          <div class="prob-bar-wrap"><div class="prob-bar" id="bar${i}"></div></div>
+          <span class="prob-value" id="pct${i}">0%</span>
+        </div>`;
+    }
+
+    // ── 캔버스 설정 ──
+    const canvas = document.getElementById("drawCanvas");
+    const ctx = canvas.getContext("2d");
+    let 그리는중 = false;
+    let 마지막X = 0, 마지막Y = 0;
+
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 24;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const src = e.touches ? e.touches[0] : e;
+      return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+    }
+
+    function startDraw(e) {
+      e.preventDefault();
+      그리는중 = true;
+      ({ x: 마지막X, y: 마지막Y } = getPos(e));
+    }
+
+    function draw(e) {
+      e.preventDefault();
+      if (!그리는중) return;
+      const { x, y } = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(마지막X, 마지막Y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      마지막X = x; 마지막Y = y;
+    }
+
+    function stopDraw() { 그리는중 = false; }
+
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", stopDraw);
+    canvas.addEventListener("mouseleave", stopDraw);
+    canvas.addEventListener("touchstart", startDraw, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", stopDraw);
+
+    // ── 지우기 ──
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      document.getElementById("resultNum").textContent = "?";
+      document.getElementById("resultConf").textContent = "숫자를 그린 후 인식하기를 눌러주세요";
+      for (let i = 0; i <= 9; i++) {
+        document.getElementById(`bar${i}`).style.width = "0%";
+        document.getElementById(`pct${i}`).textContent = "0%";
+      }
+    });
+
+    // ── 인식하기 ──
+    document.getElementById("recognizeBtn").addEventListener("click", async () => {
+      const tmp = document.createElement("canvas");
+      tmp.width = canvas.width; tmp.height = canvas.height;
+      const tctx = tmp.getContext("2d");
+      tctx.fillStyle = "white";
+      tctx.fillRect(0, 0, tmp.width, tmp.height);
+      tctx.drawImage(canvas, 0, 0);
+
+      document.getElementById("resultNum").textContent = "…";
+      document.getElementById("resultConf").textContent = "인식 중...";
+
+      try {
+        const res = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: tmp.toDataURL("image/png") }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          document.getElementById("resultConf").textContent = data.error;
+          return;
+        }
+
+        document.getElementById("resultNum").textContent = data.prediction;
+        document.getElementById("resultConf").textContent = `신뢰도: ${data.confidence}%`;
+
+        for (let i = 0; i <= 9; i++) {
+          const pct = data.probabilities[i] ?? 0;
+          document.getElementById(`bar${i}`).style.width = pct + "%";
+          document.getElementById(`pct${i}`).textContent = pct + "%";
+        }
+      } catch {
+        document.getElementById("resultConf").textContent = "서버 오류가 발생했습니다.";
+      }
+    });
+  </script>
+</body>
+</html>
