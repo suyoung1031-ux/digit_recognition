@@ -142,5 +142,6 @@ def 숫자인식():
 
 if __name__ == "__main__":
     모델학습()
-    print("\n서버 시작! 브라우저에서 http://localhost:5001 을 열어주세요.\n")
-    app.run(debug=False, host="0.0.0.0", port=5001)
+    port = int(os.environ.get("PORT", 5001))
+    print(f"\n서버 시작! 브라우저에서 http://localhost:{port} 을 열어주세요.\n")
+    app.run(debug=False, host="0.0.0.0", port=port)
